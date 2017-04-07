@@ -1,0 +1,167 @@
+{
+    psiClassPrefix="Cpp"
+    psiImplClassSuffix="Impl"
+    psiPackage="com.kgb.lang.cpp.psi"
+    psiImplPackage="com.kgb.lang.cpp.psi.impl"
+    psiImplUtilClass="com.kgb.lang.cpp.psi.impl.CppUtilImpl"
+
+    classHeader="license.txt"
+    parserClass="com.kgb.lang.cpp.parser.CppParser"
+    parserUtilClass="com.kgb.lang.cpp.parser.CppParserUtil"
+
+    elementTypeClass="com.kgb.lang.cpp.psi.CppElementType"
+    elementTypeHolderClass="com.kgb.lang.cpp.psi.CppTypes"
+    elementTypePrefix="CPP_"
+    tokenTypeClass = "com.kgb.lang.cpp.psi.impl.CppTokenElement"
+
+    tokens = [
+        LB = "{"
+        RB = "}"
+        LB2 = "("
+        RB2 = ")"
+        LB3 = "["
+        RB3 = "]"
+        LB4 = "<"
+        RB4 = ">"
+
+        EQ = "="
+        NOT_EQ = "!="
+        OUT = "<<"
+        IN = ">>"
+        SEMICOLON = ";"
+        COLON = ":"
+        DOT = "."
+        POINTER_CALL = "->"
+        COMMA = ","
+        POINTER = "*"
+        REFERENCE = "&"
+        TABLE = "[]"
+        APOS = '"'
+        WHITE_SPACE = "regexp:[\s\n\r\t]"
+        VAR_ACCESSOR = "::"
+        DESTRUCTOR_KEY = "~"
+
+        line_comments = 'regexp://.*'
+        multiline_comment ='regexp:/\*( [^*] | (\*+[^*/]) )*\*+/'
+
+        // Default value
+        string_pattern = "regexp:(\"([^\"\\]|\\.)*\")"
+        include_path = 'regexp:\s<([\w\\\s\\.\/]+)>'
+        char = "regexp:('([^'\\]|\\.)*')"
+        number='regexp:\d+(\.\d*)?'
+
+        //Base Types
+        short_type = "short"
+        int_type = "int"
+        long_type = "long"
+        float_type = "float"
+        double_type = "double"
+        char_type = "char"
+        void_type = "void"
+        bool_type = "bool"
+
+        //Keywords
+        const = "const"
+        static = "static"
+        virtual = "virtual"
+        true = "true"
+        false = "false"
+        include_keyword = "#include"
+        precompiler_if_key = "#if"
+        precompiler_else_key = "#else"
+        precompiler_elif_key = "#elif"
+        precompiler_endif_key = "#endif"
+        precompiler_define_key = "#define"
+        namespace_keyword = "namespace"
+        using_keyword = "using"
+        struct_keyword = "struct"
+        class_keyword = "class"
+        return_keyword = "return"
+        public_keyword = "public"
+        private_keyword = "private"
+        null_keyword = "NULL"
+        if_keyword = "if"
+        else_keyword = "else"
+
+        //variable and method name must be at the end
+        key_name = 'regexp:[a-zA-Z_]\w*'
+
+    ]
+
+    name(".*_def")="definition"
+    implements(".*_def")="com.kgb.lang.cpp.psi.CppDefinition"
+}
+
+root ::= body*
+
+private body ::= !<<eof>> (precompiler | namespace_use | namespace_def | struct_def | class_def
+    | var_assign | var_def | method_def | (call ";") | statements | comments)
+//Precompiler definition
+private precompiler ::= precompiler_if | precompiler_define | include
+include ::= include_keyword (include_path | string ) {methods=[getLibName]}
+precompiler_if ::= precompiler_if_key vname LB2 vname RB2 body* precompiler_elif* precompiler_else? precompiler_endif_key
+precompiler_elif ::= precompiler_elif_key vname LB2 vname RB2 body*
+precompiler_else ::= precompiler_else_key body*
+precompiler_define ::= precompiler_define_key vname var_value
+
+//-------------END Precompiler definition-------------//
+
+//Var and method definition
+var_def ::= var_def_type var_name (sep var_value)? ";" {methods=[getName isValid setName getPresentation]}
+private var_def_type ::= (var_type var_keywords?) | (var_keywords? var_type)
+var_assign ::= var_name (sep var_value)? ";" {methods=[getName isValid]}
+method_def ::= var_def_type vname template? LB2 method_args? RB2 LB body* RB {methods=[getName setName getPresentation]}
+method_args ::= <<comma_separated_list(method_arg)>>
+method_arg ::= var_type var_keywords? var_name
+namespace_def ::= namespace_keyword vname LB body* RB {methods=[getName setName getPresentation]}
+namespace_use ::= using_keyword namespace_keyword vname ";"
+struct_def ::= struct_keyword vname LB struct_body RB ";" {methods=[getName setName getPresentation]}
+private struct_body ::= var_def+
+
+class_def ::= class_keyword vname LB (private_class_body | public_class_body)* RB ";" {methods=[getName setName getPresentation]}
+private public_class_body ::= public_keyword COLON (var_def | method_def | class_constructor_def | class_destructor_def)+
+//private is default for C++ class
+private private_class_body ::= (private_keyword COLON)? (var_def | method_def | class_constructor_def | class_destructor_def)+
+
+class_constructor_def ::= var_keywords? var_name LB2 method_args? RB2 LB body* RB {methods=[getName setName getPresentation]}
+class_destructor_def ::= var_keywords? DESTRUCTOR_KEY var_name LB2 method_args? RB2 LB body* RB {methods=[getName setName getPresentation]}
+
+var_value ::= (value_option? ((LB2 var_value_internal RB2) | var_value_internal)) | call
+private var_value_internal ::= string | number | char | var_name | null_keyword | true | false
+private value_option ::= REFERENCE | POINTER | cast
+cast ::= (LB2 var_type RB2) | var_type
+var_name ::= <<var_accessor_separated_list(vname)>>
+sep ::= EQ | IN | OUT
+vname ::= key_name template?
+string ::= (string_pattern | var_name)+
+comments ::= line_comments | multiline_comment
+private var_keywords ::= const | static | virtual
+
+call ::= (method_call | var_call | return_call)
+return_call ::= return_keyword (var_call | method_call)
+method_call ::= var_name LB2 method_params? RB2
+method_params ::= <<comma_separated_list(method_param)>>
+method_param ::= method_call | var_name | string | number
+private var_call ::= (var_name | "(" POINTER? var_name ")")  ((DOT | POINTER_CALL) method_call)
+
+//Types definition
+var_type ::= user_def_type | basic_def_type {methods=[getName validValue] implements="com.kgb.lang.cpp.psi.CppType"}
+user_def_type ::= var_name type_option?
+basic_def_type ::= base_token type_option?
+ {extends="com.kgb.lang.cpp.psi.impl.CppBasicType" implements="com.kgb.lang.cpp.psi.ICppBasicType" methods=[getBaseTypeToken]}
+base_token ::= void_type | bool_type | char_type | int_type | float_type | double_type | short_type | long_type
+
+
+type_option ::= POINTER | REFERENCE | "[]" | template
+
+template ::= LB4 <<comma_separated_list(var_type)>> RB4
+
+//C++ statements
+private statements ::= if_statement
+if_statement ::= if_keyword LB2 cond RB2 LB body* RB
+cond ::= var_value (EQ | NOT_EQ) var_value
+
+//Meta instruction
+
+meta var_accessor_separated_list ::= <<param>> ("::" <<param>>) *
+meta comma_separated_list ::= <<param>> ("," <<param>>) *
